@@ -4,16 +4,25 @@ rm(list=ls())
 ```
 
 ```{r}
-load("data_training.Rdata")
+#load("data_training.Rdata")
 ```
 
 ```{r}
-Y=data_training$TLML[119,84,]
-    X_data <- data.frame(albedo =data_training$ALBEDO[119,84,], CLDHGH=data_training$CLDHGH[119,84,], CLDMID =data_training$CLDMID[119,84,],CLDLOW =data_training$CLDLOW[119,84,], SWGDN =data_training$SWGDN[119,84,], PRECTOT =data_training$prectot[119,84,], QLML=data_training$QLML[119,84,], SPEED=data_training$speed[119,84,], PRECSNO = data_training$precsno[119,84,])
-X_data
-n=dim(X_data)[1]
-p=dim(X_data)[2]+1
-data<- data.frame(Y, X_data)
+#Y=data_training$TLML[119,84,]
+#X_data <- data.frame(albedo =data_training$ALBEDO[119,84,], CLDHGH=data_training$CLDHGH[119,84,], CLDMID =data_training$CLDMID[119,84,],CLDLOW =data_training$CLDLOW[119,84,], SWGDN =data_training$SWGDN[119,84,], PRECTOT =data_training$prectot[119,84,], QLML=data_training$QLML[119,84,], SPEED=data_training$speed[119,84,], PRECSNO = data_training$precsno[119,84,])
+#X_data
+#n=dim(X_data)[1]
+#p=dim(X_data)[2]+1
+#data<- data.frame(Y, X_data)
+#data
+data<-read.csv(file = "South Bend temperature data.csv")
+data<-data[,-1]#get rid of row X
+n<-dim(data)[1]
+p<-dim(data)[2]
+Y<-data$Y
+data
+X_data<-data[,-1]
+
 ```
 
 ```{r}
