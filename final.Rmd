@@ -1,0 +1,518 @@
+
+```{r}
+rm(list=ls())
+```
+
+```{r}
+load("data_training.Rdata")
+```
+
+```{r}
+Y=data_training$TLML[119,84,]
+    X_data <- data.frame(albedo =data_training$ALBEDO[119,84,], CLDHGH=data_training$CLDHGH[119,84,], CLDMID =data_training$CLDMID[119,84,],CLDLOW =data_training$CLDLOW[119,84,], SWGDN =data_training$SWGDN[119,84,], PRECTOT =data_training$prectot[119,84,], QLML=data_training$QLML[119,84,], SPEED=data_training$speed[119,84,], PRECSNO = data_training$precsno[119,84,])
+X_data
+n=dim(X_data)[1]
+p=dim(X_data)[2]+1
+data<- data.frame(Y, X_data)
+```
+
+```{r}
+##########################################################
+############ part 1: exploratory analysis
+##########################################################
+
+# comments: data are from reanalysis, a data set integrating real observation with computer model
+# MERRA-2 is the standard product in the US, there are others in Europe like ECMWF
+# but in general we could hopefully expect good quality. For a full comment go on the MERRA-2 website
+# issues: e.g. resolution, numerical model simulation, additional uncertainty
+
+```
+
+```{r}
+cor(cbind(Y,X_data))
+#from the correlation table, looks like QLML, albedo, CLDHGH, SWGDN, and PRECTOT are the the most correlated respectively
+#QMML are highly correlated with albedo
+
+```
+```{r}
+library(ggplot2)
+#lets plot some graphs!!
+df=data.frame(T=1:n,Y=Y,X_data)
+ggplot(df,aes(T, Y))+geom_point()+ labs(x = "Days",y="Daily Temperature (°F)")
+ggplot(df,aes(T, albedo))+geom_point()+ labs(x = "Days",y="Daily albedo")
+ggplot(df,aes(T, QLML))+geom_point()+ labs(x = "Days",y="Daily QLML")
+ggplot(df,aes(T, CLDHGH))+geom_point()+ labs(x = "Days",y="Daily CLDHGH")
+ggplot(df,aes(T, CLDMID))+geom_point()+ labs(x = "Days",y="Daily CLDMID")
+ggplot(df,aes(T, CLDLOW))+geom_point()+ labs(x = "Days",y="Daily CLDLOW")
+ggplot(df,aes(T, SWGDN))+geom_point()+ labs(x = "Days",y="Daily SWGDN")
+ggplot(df,aes(T, PRECTOT))+geom_point()+ labs(x = "Days",y="Daily PRECTOT")
+ggplot(df,aes(T, SPEED))+geom_point()+ labs(x = "Days",y="Daily SPEED ")
+ggplot(df,aes(T, PRECSNO))+geom_point()+ labs(x = "Days",y="Daily PRECSNO(kg/m2/s2)")
+#not sure what the spike in albedo is ? maybe outliers ? 
+```
+```{r}
+#Lets try to put all vlaues below 0.000025 to be 0 to reduce noise on PRECSNO.same with PRECTOT
+data$PRECTOT[data$PRECTOT<= 0.000025] <-0
+data$PRECSNO[data$PRECSNO<= 0.000025] <- 0
+data$PRECTOT[data$PRECTOT> 0.000025] <-1
+data$PRECSNO[data$PRECSNO> 0.000025] <- 1
+X_data$PRECTOT<-data$PRECTOT
+X_data$PRECSNO<-data$PRECSNO
+```
+
+
+
+```{r}
+####### Histograms
+df=data.frame(Y=Y,X1=X_data[,1],X7=X_data[,7])
+ggplot() + geom_histogram(data=df,aes(x=Y,y=..density..),binwidth=9,color="black", fill="white")+xlab("Temperature (°F)")
+ggplot() + geom_histogram(data=df,aes(x=X1,y=..density..),binwidth=0.05,color="black", fill="white")+xlab("albedo")
+ggplot() + geom_histogram(data=df,aes(x=X7,y=..density..),binwidth=0.001,color="black", fill="white")+xlab("QLML")
+```
+
+
+```{r}
+#lets try to plot the full model to see what happens: 
+mod=lm(Y~., data)
+mod.sum=summary(mod)
+mod.sum
+#according to the p value: albedo, QLML and CLDLOW are significance
+#get MSEP for full model:
+MSEP<- anova(mod)$Mean[p]
+anova(mod)$Sum[p]/MSEP-(n-2*p)
+```
+
+
+
+
+```{r}
+#full extensive search model
+#create store output
+R2_vec<- vector(length =p-1)
+R2adj_vec<- vector(length=p-1)
+Cp_vec<- vector(length = p-1)
+press_vec<- vector(length = p-1)
+AIC_vec<- vector(length = p-1)
+BIC_vec<- vector(length = p-1)
+R2_best<- matrix(F, nrow = p-1, ncol=p-1)
+R2adj_best<-matrix(F, nrow = p-1, ncol=p-1)
+Cp_best<-matrix(F, nrow = p-1, ncol=p-1)
+press_best<-matrix(F, nrow = p-1, ncol=p-1)
+AIC_best<- matrix(F, nrow = p-1, ncol=p-1)
+BIC_best<- matrix(F, nrow = p-1, ncol=p-1)
+for (i in 1:(p-1)) {
+  #get all combination
+  combination <-combn(c(1:9),i)
+  
+  #find the best value of all combination
+  R2<- 0
+  R2adj<-0
+  Cp<-10^50
+  press<-10^50
+  AIC<-10^50
+  BIC<-10^5
+  for (j in 1:ncol(combination) ){
+    df<-data.frame(Y=Y, X_data[,combination[,j]])
+    mod <- lm(Y~.,data = df)
+    ### R2
+    if (R2 < summary(mod)$r.squared){
+      R2_best[i,]<-F
+      R2_best[i, combination[,j] ]<- T
+    }
+    R2<- max(R2, summary(mod)$r.squared)
+    ### adjusted R2
+    if (R2adj < summary(mod)$adj.r.squared){
+      R2adj_best[i,]<-F
+      R2adj_best[i, combination[,j] ]<- T
+    }
+    R2adj<-max(R2adj, summary(mod)$adj.r.squared)
+    ### Mallows Cp=SSE_psub/MSE_p-(n-2*psub)-not work, ask for fix later
+    
+    psub=i+1
+    C_P=anova(mod)$Sum[psub]/MSEP-(n-2*psub)
+    if (Cp > C_P){
+      Cp_best[i,]<-F
+      Cp_best[i, combination[,j] ]<- T
+    }
+    Cp<-min(Cp, C_P)
+    #PRESS
+    # hi are the diagonal elements of the hat matrix H
+    hi=lm.influence(mod)$hat
+    pr=residuals(mod)/(1 - hi) 
+    PRESS=sum(pr^2)
+    if (press > PRESS){
+      press_best[i,]<-F
+      press_best[i, combination[,j] ]<- T
+    }
+    press=min(press, PRESS)
+    ### AIC
+    if (AIC > AIC(mod)) {
+      AIC_best[i,]<-F
+      AIC_best[i, combination[,j] ]<- T
+    }
+    AIC<-min(AIC, AIC(mod) )      
+    
+    ### SBC/BIC
+    if (BIC > BIC(mod)) {
+      BIC_best[i,]<-F
+      BIC_best[i, combination[,j] ]<- T
+    }
+    BIC<-min(BIC, BIC(mod) )
+  }
+  #store output
+  R2_vec[i] <- R2 
+  R2adj_vec[i]<-R2adj
+  Cp_vec[i]<-Cp
+  press_vec[i]<- press
+  AIC_vec[i]<- AIC
+  BIC_vec[i]<- BIC
+}
+```
+
+### result of extensive search
+
+```{r}
+# values of criterions with increasing numbers of predictors
+R2_vec
+R2adj_vec
+Cp_vec
+press_vec
+AIC_vec
+BIC_vec
+# we can see that all the criterions agree that 5 predictors are best
+```
+
+
+
+
+```{r}
+#chosen predictors by criterions
+R2_best[5,]
+R2adj_best[5,]
+Cp_best[5,]
+press_best[5,]
+AIC_best[5,]
+BIC_best[5,]
+```
+
+
+## CV for 5 predictors
+```{r}
+############ cross validation ####################
+
+# K-fold cross-validation
+library(DAAG)
+# 3 fold cross-validation
+# in the output
+# Predicted: prediction using all observations 
+# cvpred: cross-validation prediction. 
+# lnY: the observed outocome
+# CV residual: lnY-cvpred
+# Sum of squares: (CV residuals)^2
+# Mean square: Sum of squares/n, where n is the per-fold size
+
+cv.summ=cv.lm(data, lm(Y~albedo+CLDLOW+SWGDN+QLML+PRECSNO, data), m=3) 
+cv.resid=cv.summ$Y-cv.summ$cvpred
+resid=cv.summ$Y-cv.summ$Predicted
+sum(resid^2)/30 # in-sample Sum of squares
+sum(cv.resid^2)/30 # out-of-sample Sum of squares
+```
+
+
+
+## CV for 4 predictors
+```{r}
+############ cross validation ####################
+
+# K-fold cross-validation
+library(DAAG)
+# 3 fold cross-validation, 90/3=30
+# in the output
+# Predicted: prediction using all observations 
+# cvpred: cross-validation prediction. 
+# lnY: the observed outocome
+# CV residual: lnY-cvpred
+# Sum of squares: (CV residuals)^2
+# Mean square: Sum of squares/n, where n is the per-fold size
+
+cv.summ=cv.lm(data, lm(Y~albedo+CLDLOW+SWGDN+QLML, data), m=3) 
+cv.resid=cv.summ$Y-cv.summ$cvpred
+resid=cv.summ$Y-cv.summ$Predicted
+sum(resid^2)/30 # in-sample Sum of squares
+sum(cv.resid^2)/30 # out-of-sample Sum of squares
+```
+
+
+## CV for 6 predictors
+```{r}
+############ cross validation ####################
+
+# K-fold cross-validation
+library(DAAG)
+# 3 fold cross-validation, 90/3=30
+# in the output
+# Predicted: prediction using all observations 
+# cvpred: cross-validation prediction. 
+# lnY: the observed outocome
+# CV residual: lnY-cvpred
+# Sum of squares: (CV residuals)^2
+# Mean square: Sum of squares/n, where n is the per-fold size
+
+cv.summ=cv.lm(data, lm(Y~albedo+CLDLOW+SWGDN+QLML+PRECSNO+SPEED, data), m=3) 
+cv.resid=cv.summ$Y-cv.summ$cvpred
+resid=cv.summ$Y-cv.summ$Predicted
+sum(resid^2)/30 # in-sample Sum of squares
+sum(cv.resid^2)/30 # out-of-sample Sum of squares
+```
+
+######### Final model without interaction
+
+```{r}
+main_mod<-lm(Y~albedo+CLDLOW+SWGDN+QLML+PRECSNO,data)
+summary(main_mod)
+cor(cbind(Y,X_data[,c(1,4,5,7,9)]))
+#QLML correlated with albedo
+#CLDLOW highly correlated with SWGDN
+summary(main_mod)$r.squared
+summary(main_mod)$adj.r.squared
+hi=lm.influence(main_mod)$hat
+pr=residuals(main_mod)/(1 - hi) 
+PRESS=sum(pr^2)
+PRESS
+AIC(main_mod)
+BIC(main_mod)
+```
+## try all interaction
+```{r}
+main_mod<-lm(Y~(albedo+CLDLOW+SWGDN+QLML+PRECSNO+CLDLOW*SWGDN)^2,data)
+summary(main_mod)
+summary(main_mod)$r.squared
+summary(main_mod)$adj.r.squared
+hi=lm.influence(main_mod)$hat
+pr=residuals(main_mod)/(1 - hi) 
+PRESS=sum(pr^2)
+PRESS
+AIC(main_mod)
+BIC(main_mod)
+#looks like albedo:QLML & CLDLOW:SWGDN:QLML
+```
+## try QLML*albedo with PRECSNO
+
+```{r}
+main_mod<-lm(Y~albedo+CLDLOW+SWGDN+QLML+PRECSNO+QLML*albedo,data)
+summary(main_mod)
+summary(main_mod)$r.squared
+summary(main_mod)$adj.r.squared
+hi=lm.influence(main_mod)$hat
+pr=residuals(main_mod)/(1 - hi) 
+PRESS=sum(pr^2)
+PRESS
+AIC(main_mod)
+BIC(main_mod)
+```
+```{r}
+############ cross validation ####################
+
+# K-fold cross-validation
+library(DAAG)
+# 3 fold cross-validation, 90/3=30
+# in the output
+# Predicted: prediction using all observations 
+# cvpred: cross-validation prediction. 
+# lnY: the observed outocome
+# CV residual: lnY-cvpred
+# Sum of squares: (CV residuals)^2
+# Mean square: Sum of squares/n, where n is the per-fold size
+
+cv.summ=cv.lm(data, main_mod , m=3) 
+cv.resid=cv.summ$Y-cv.summ$cvpred
+resid=cv.summ$Y-cv.summ$Predicted
+sum(resid^2)/30 # in-sample Sum of squares
+sum(cv.resid^2)/30 # out-of-sample Sum of squares
+
+```
+
+## try QLML*albedo without PRECSNO
+
+```{r}
+main_mod<-lm(Y~albedo+CLDLOW+SWGDN+QLML+QLML*albedo,data)
+summary(main_mod)
+summary(main_mod)$r.squared
+summary(main_mod)$adj.r.squared
+hi=lm.influence(main_mod)$hat
+pr=residuals(main_mod)/(1 - hi) 
+PRESS=sum(pr^2)
+PRESS
+AIC(main_mod)
+BIC(main_mod)
+```
+```{r}
+############ cross validation ####################
+
+# K-fold cross-validation
+library(DAAG)
+# 3 fold cross-validation, 90/3=30
+# in the output
+# Predicted: prediction using all observations 
+# cvpred: cross-validation prediction. 
+# lnY: the observed outocome
+# CV residual: lnY-cvpred
+# Sum of squares: (CV residuals)^2
+# Mean square: Sum of squares/n, where n is the per-fold size
+
+cv.summ=cv.lm(data, main_mod , m=3) 
+cv.resid=cv.summ$Y-cv.summ$cvpred
+resid=cv.summ$Y-cv.summ$Predicted
+sum(resid^2)/30 # in-sample Sum of squares
+sum(cv.resid^2)/30 # out-of-sample Sum of squares
+
+```
+
+## try interact CLDLOW:SWGDN:QLML
+```{r}
+main_mod<-lm(Y~albedo+CLDLOW+SWGDN+QLML+PRECSNO+QLML*albedo+CLDLOW:SWGDN:QLML,data)
+summary(main_mod)
+summary(main_mod)$r.squared
+summary(main_mod)$adj.r.squared
+hi=lm.influence(main_mod)$hat
+pr=residuals(main_mod)/(1 - hi) 
+PRESS=sum(pr^2)
+PRESS
+AIC(main_mod)
+BIC(main_mod)
+```
+
+```{r}
+############ cross validation ####################
+
+# K-fold cross-validation
+library(DAAG)
+# 3 fold cross-validation, 90/3=30
+# in the output
+# Predicted: prediction using all observations 
+# cvpred: cross-validation prediction. 
+# lnY: the observed outocome
+# CV residual: lnY-cvpred
+# Sum of squares: (CV residuals)^2
+# Mean square: Sum of squares/n, where n is the per-fold size
+
+cv.summ=cv.lm(data, main_mod , m=3) 
+cv.resid=cv.summ$Y-cv.summ$cvpred
+resid=cv.summ$Y-cv.summ$Predicted
+sum(resid^2)/30 # in-sample Sum of squares
+sum(cv.resid^2)/30 # out-of-sample Sum of squares
+```
+
+```{r}
+main_mod<-lm(Y~albedo+CLDLOW+SWGDN+QLML+QLML*albedo+CLDLOW:SWGDN:QLML,data)
+summary(main_mod)
+summary(main_mod)$r.squared
+summary(main_mod)$adj.r.squared
+hi=lm.influence(main_mod)$hat
+pr=residuals(main_mod)/(1 - hi) 
+PRESS=sum(pr^2)
+PRESS
+AIC(main_mod)
+BIC(main_mod)
+```
+
+
+
+```{r}
+############ cross validation ####################
+
+# K-fold cross-validation
+library(DAAG)
+# 3 fold cross-validation, 90/3=30
+# in the output
+# Predicted: prediction using all observations 
+# cvpred: cross-validation prediction. 
+# lnY: the observed outocome
+# CV residual: lnY-cvpred
+# Sum of squares: (CV residuals)^2
+# Mean square: Sum of squares/n, where n is the per-fold size
+
+cv.summ=cv.lm(data, main_mod , m=3) 
+cv.resid=cv.summ$Y-cv.summ$cvpred
+resid=cv.summ$Y-cv.summ$Predicted
+sum(resid^2)/30 # in-sample Sum of squares
+sum(cv.resid^2)/30 # out-of-sample Sum of squares
+```
+
+######## Final model
+
+```{r}
+main_mod<-lm(Y~albedo+CLDLOW+SWGDN+QLML+QLML*albedo,data)
+summary(main_mod)
+```
+```{r}
+df=data.frame(T=1:n,Y=main_mod$fitted.values)
+ggplot(df,aes(T, Y))+geom_point()+ labs(x = "Days",y="Fitted Temperature (°F)")
+
+df=data.frame(T=1:n,E=main_mod$residuals)
+ggplot(df,aes(T, E))+geom_point()+ labs(x = "Days",y="Residuals (°F)")
+
+summary(mod)$sigma^2
+summary(mod)$sigma
+mod.sum$fstatistic[1]
+2*(1-pf(abs(mod.sum$fstatistic[1]),p-1,n-p))
+
+mod.ci=confint(mod,level=1-0.05)
+mod.ci
+1.96*summary(mod)$sigma
+1.96*2.49
+```
+
+
+```{r}
+#residuals:
+df=data.frame(E=main_mod$residuals,Y=Y,X1=X_data[,1],X2=X_data[,4],X3=X_data[,5], X4= X_data[,7] )
+ggplot(df,aes(X4, E))+geom_point()+ labs(x = "humidity",y="Residuals (°F)")
+ggplot(df,aes(X1, E))+geom_point()+ labs(x = "albedo",y="Residuals (°F)")
+ggplot(df,aes(X2, E))+geom_point()+ labs(x = "Cloud Low",y="Residuals (°F)")
+ggplot(df,aes(Y, E))+geom_point()+ labs(x = "Fitted values (°F)",y="Residuals (°F)")
+ggplot(df, aes(X3,E))+geom_point()+ labs(x = "surface incoming shorwave 
+flux (W/m2),",y="Residuals (°F)")
+
+ggplot(df, aes(c(1:90),E))+geom_point()+ labs(x = "days",y="Residuals (°F)")
+```
+
+```{r}
+# Normality of the residuals?
+df=data.frame(E=main_mod$residuals)
+ggplot() + geom_histogram(data=df,aes(x=E,y=..density..),binwidth=3,color="black", fill="white")+xlab("Temperature (°F)")
+
+```
+
+
+## try boxcox transformation
+```{r}
+library(MASS)
+library(lindia)
+gg_boxcox(main_mod)
+bc= boxcox(main_mod,lambda=seq(1.4,2,0.01),plotit=T)
+lambda = bc$x[order(bc$y, decreasing = TRUE)[1]]
+lambda
+```
+
+```{r}
+lambda=1.75
+Yl= (Y^lambda-1)/lambda
+mod.reg.bc=lm(Yl~ albedo+CLDLOW+SWGDN+QLML+QLML*albedo, X_data)
+summary(mod.reg.bc)
+residual<-mod.reg.bc$residuals
+df=data.frame(E=residual,Y=Y,X1=X_data[,1],X2=X_data[,4],X3=X_data[,5], X4= X_data[,7] )
+ggplot(df,aes(X4, E))+geom_point()+ labs(x = "humidity",y="Residuals (°F)")
+ggplot(df,aes(X1, E))+geom_point()+ labs(x = "albedo",y="Residuals (°F)")
+ggplot(df,aes(X2, E))+geom_point()+ labs(x = "Cloud Low",y="Residuals (°F)")
+ggplot(df,aes(Y, E))+geom_point()+ labs(x = "Fitted values (°F)",y="Residuals (°F)")
+ggplot(df, aes(X3,E))+geom_point()+ labs(x = "surface incoming shorwave 
+ux,",y="Residuals (°F)")
+
+ggplot(df, aes(c(1:90),E))+geom_point()+ labs(x = "days",y="Residuals (°F)")
+ggplot() + geom_histogram(data=df,aes(x=E,y=..density..),binwidth=30,color="black", fill="white")+xlab("Temperature (°F)")
+AIC(mod.reg.bc)
+
+## looks like boxcox transformation doesnt help much
+```
+
