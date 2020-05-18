@@ -6,6 +6,7 @@ rm(list=ls())
 ```{r}
 #load("data_training.Rdata")
 ```
+#### LOAD DATA
 
 ```{r}
 #Y=data_training$TLML[119,84,]
@@ -448,15 +449,16 @@ sum(resid^2)/30 # in-sample Sum of squares
 sum(cv.resid^2)/30 # out-of-sample Sum of squares
 ```
 
-######## Final model
+# Final model
 
 ```{r}
 main_mod<-lm(Y~albedo+CLDLOW+SWGDN+QLML+QLML*albedo,data)
 summary(main_mod)
 ```
 ```{r}
+df0=data.frame(T=1:n,Y=Y,X_data)
 df=data.frame(T=1:n,Y=main_mod$fitted.values)
-ggplot(df,aes(T, Y))+geom_point()+ labs(x = "Days",y="Fitted Temperature (°F)")
+ggplot()+geom_point(df,mapping=aes(T, Y))+ labs(x = "Days",y="Temperature (°F)") +geom_point(df0,mapping=aes(T, Y), color= 'red')
 
 df=data.frame(T=1:n,E=main_mod$residuals)
 ggplot(df,aes(T, E))+geom_point()+ labs(x = "Days",y="Residuals (°F)")
